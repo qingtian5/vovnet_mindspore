@@ -427,12 +427,14 @@ class VoVNet(nn.Cell):
 #     return backbone
 
 if __name__ == "__main__":
-    net = VoVNet(VoVNet19_eSE, input_ch=3, out_features=["stage2", "stage3", "stage4", "stage5"])
+    model = VoVNet(VoVNet19_eSE, input_ch=3, out_features=["stage2", "stage3", "stage4", "stage5"])
+    model.set_train(mode=False)
     stdnormal = ops.StandardNormal(seed=2)
     input = stdnormal((1, 3, 224, 224))
-    # 下面的代码 output = net(input)会报一个错误, -----The value of stage3.OSA3_1.ese.fc.weight is Parameter
+    
+    # 下面的代码 output = model(input)会报一个错误, -----The value of stage3.OSA3_1.ese.fc.weight is Parameter
     # (name=ese.fc.weight, shape=(512, 512, 1, 1), dtype=Float32, requires_grad=True),
     # its name 'ese.fc.weight' already exists. Please set a unique name for the parameter.------
     # 暂时还不知道如何解决
-    output = net(input)
+    output = model(input)
 
