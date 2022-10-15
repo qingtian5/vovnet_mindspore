@@ -236,7 +236,7 @@ class _OSA_module(nn.Cell):
             x = layer(x)
             output.append(x)
 
-        x = torch.cat(output, dim=1)
+        x = ops.Concat(axis=1)(output)
         xt = self.concat(x)
 
         xt = self.ese(xt)
