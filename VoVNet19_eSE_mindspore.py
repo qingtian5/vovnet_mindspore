@@ -222,7 +222,7 @@ class _OSA_module(nn.Cell):
             OrderedDict(conv1x1(in_channel, concat_ch, module_name, "concat"))
         )
 
-        self.ese = eSEModule(concat_ch)
+        self.ese = nn.SequentialCell(OrderedDict([(f'_ese_{module_name}',eSEModule(concat_ch))]))
 
     def construct(self, x):
 
@@ -431,7 +431,7 @@ if __name__ == "__main__":
     model.set_train(mode=False)
     stdnormal = ops.StandardNormal(seed=2)
     input = stdnormal((1, 3, 224, 224))
-    
+
     # 下面的代码 output = model(input)会报一个错误, -----The value of stage3.OSA3_1.ese.fc.weight is Parameter
     # (name=ese.fc.weight, shape=(512, 512, 1, 1), dtype=Float32, requires_grad=True),
     # its name 'ese.fc.weight' already exists. Please set a unique name for the parameter.------
