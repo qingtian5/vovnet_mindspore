@@ -170,7 +170,7 @@ class Hsigmoid(nn.Cell):
         super(Hsigmoid, self).__init__()
         self.inplace = inplace
 
-    def forward(self, x):
+    def construct(self, x):
         return nn.ReLU6(x + 3.0, inplace=self.inplace) / 6.0
 
 # nn.AdaptiveAvgPool2D(1) 如何复现,用ops.ReduceMean(keep_dims=True)替换
@@ -181,7 +181,7 @@ class eSEModule(nn.Cell):
         self.fc = nn.Conv2d(channel, channel, kernel_size=1, pad_mode='pad', padding=0)
         self.hsigmoid = Hsigmoid()
 
-    def forward(self, x):
+    def construct(self, x):
         input = x
         x = self.avg_pool(x)
         x = self.fc(x)
@@ -224,7 +224,7 @@ class _OSA_module(nn.Cell):
 
         self.ese = eSEModule(concat_ch)
 
-    def forward(self, x):
+    def construct(self, x):
 
         identity_feat = x
 
