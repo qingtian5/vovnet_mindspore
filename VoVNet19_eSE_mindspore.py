@@ -5,6 +5,8 @@ from mindspore import nn,ops
 
 from mindvision.engine.class_factory import ClassFactory, ModuleType
 
+ms.set_context(mode=ms.PYNATIVE_MODE)
+
 # 如何复现detection2的算子！！
 # from detectron2.layers import FrozenBatchNorm2d, ShapeSpec, get_norm
 # from detectron2.modeling.backbone import Backbone
@@ -169,9 +171,10 @@ class Hsigmoid(nn.Cell):
     def __init__(self, inplace=True):
         super(Hsigmoid, self).__init__()
         self.inplace = inplace
+        self.relu6 = nn.ReLU6()
 
     def construct(self, x):
-        return nn.ReLU6(x + 3.0, inplace=self.inplace) / 6.0
+        return self.relu6(x + 3.0) / 6.0
 
 # nn.AdaptiveAvgPool2D(1) 如何复现,用ops.ReduceMean(keep_dims=True)替换
 class eSEModule(nn.Cell):
@@ -182,11 +185,11 @@ class eSEModule(nn.Cell):
         self.hsigmoid = Hsigmoid()
 
     def construct(self, x):
-        input = x
+        _input = x
         x = self.avg_pool(x)
         x = self.fc(x)
         x = self.hsigmoid(x)
-        return input * x
+        return _input * x
 
 
 class _OSA_module(nn.Cell):
@@ -222,7 +225,7 @@ class _OSA_module(nn.Cell):
             OrderedDict(conv1x1(in_channel, concat_ch, module_name, "concat"))
         )
 
-        self.ese = nn.SequentialCell(OrderedDict([(f'_ese_{module_name}',eSEModule(concat_ch))]))
+        self.ese = eSEModule(concat_ch)
 
     def construct(self, x):
 
@@ -294,8 +297,8 @@ class VoVNet(nn.Cell):
         """
         super(VoVNet, self).__init__()
 
-#         global _NORM
-#         _NORM = cfg.MODEL.VOVNET.NORM
+        # global _NORM
+        # _NORM = cfg.MODEL.VOVNET.NORM
 
         stage_specs = cfg
 
@@ -357,18 +360,18 @@ class VoVNet(nn.Cell):
                     cell.weight.shape, cell.weight.dtype
                 ))
 
-#     def _freeze_backbone(self, freeze_at):
-#         if freeze_at < 0:
-#             return
-
-#         for stage_index in range(freeze_at):
-#             if stage_index == 0:
-#                 m = self.stem  # stage 0 is the stem
-#             else:
-#                 m = getattr(self, "stage" + str(stage_index + 1))
-#             for p in m.get_parameters():
-#                 p.requires_grad = False
-#                 FrozenBatchNorm2d.convert_frozen_batchnorm(self)
+    # def _freeze_backbone(self, freeze_at):
+    #     if freeze_at < 0:
+    #         return
+    #
+    #     for stage_index in range(freeze_at):
+    #         if stage_index == 0:
+    #             m = self.stem  # stage 0 is the stem
+    #         else:
+    #             m = getattr(self, "stage" + str(stage_index + 1))
+    #         for p in m.get_parameters():
+    #             p.requires_grad = False
+    #             FrozenBatchNorm2d.convert_frozen_batchnorm(self)
 
     def construct(self, x):
         outputs = {}
@@ -382,20 +385,20 @@ class VoVNet(nn.Cell):
 
         return outputs
 
-#     def output_shape(self):
-#         return {
-#             name: ShapeSpec(
-#                 channels=self._out_feature_channels[name], stride=self._out_feature_strides[name]
-#             )
-#             for name in self._out_features
-#         }
+    # def output_shape(self):
+    #     return {
+    #         name: ShapeSpec(
+    #             channels=self._out_feature_channels[name], stride=self._out_feature_strides[name]
+    #         )
+    #         for name in self._out_features
+    #     }
 
 
 # @ClassFactory.register(ModuleType.BACKBONE)
 # def build_vovnet_backbone(cfg, input_shape):
 #     """
 #     Create a VoVNet instance from config.
-
+#
 #     Returns:
 #         VoVNet: a :class:`VoVNet` instance.
 #     """
@@ -432,9 +435,8 @@ if __name__ == "__main__":
     stdnormal = ops.StandardNormal(seed=2)
     input = stdnormal((1, 3, 224, 224))
 
-    # 下面的代码 output = model(input)会报一个错误, -----The value of stage3.OSA3_1.ese.fc.weight is Parameter
-    # (name=ese.fc.weight, shape=(512, 512, 1, 1), dtype=Float32, requires_grad=True),
-    # its name 'ese.fc.weight' already exists. Please set a unique name for the parameter.------
-    # 暂时还不知道如何解决
+    # 当模型_OSA_stage(nn.SequentialCell)继承nn.SequentialCell的时候，没有进行前向过程
+    # 本来pytorch继承nn.Sequential类的时候没有forward函数，但是在mindspore中的nn.SequentialCell该如何定义，
+    # 并且如何进行前传播，还是一个问题
     output = model(input)
 
