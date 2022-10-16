@@ -176,11 +176,11 @@ class Hsigmoid(nn.Cell):
     def construct(self, x):
         return self.relu6(x + 3.0) / 6.0
 
-# nn.AdaptiveAvgPool2D(1) 如何复现,用ops.ReduceMean(keep_dims=True)替换
+# nn.AdaptiveAvgPool2D(1) 如何复现,用ops.AdaptiveAvgPool2D(1)替换
 class eSEModule(nn.Cell):
     def __init__(self, channel, reduction=4):
         super(eSEModule, self).__init__()
-        self.avg_pool = ops.ReduceMean(keep_dims=True)
+        self.avg_pool = ops.AdaptiveAvgPool2D(1)
         self.fc = nn.Conv2d(channel, channel, kernel_size=1, pad_mode='pad', padding=0)
         self.hsigmoid = Hsigmoid()
 
@@ -231,13 +231,14 @@ class _OSA_module(nn.Cell):
 
         identity_feat = x
 
-        output = []
-        output.append(x)
+        output = ()
+        output += (x,)
+
         if self.depthwise and self.isReduced:
             x = self.conv_reduction(x)
         for layer in self.layers:
             x = layer(x)
-            output.append(x)
+            output += (x,)
 
         x = ops.Concat(axis=1)(output)
         xt = self.concat(x)
@@ -374,16 +375,34 @@ class VoVNet(nn.Cell):
     #             FrozenBatchNorm2d.convert_frozen_batchnorm(self)
 
     def construct(self, x):
-        outputs = {}
+        outputs = ()
         x = self.stem(x)
+
+        # if "stem" in self._out_features:
+        #     outputs["stem"] = x
+        # for name in self.stage_names:
+        #     x = getattr(self, name)(x)
+        #     if name in self._out_features:
+        #         outputs[name] = x
+
         if "stem" in self._out_features:
-            outputs["stem"] = x
-        for name in self.stage_names:
-            x = getattr(self, name)(x)
-            if name in self._out_features:
-                outputs[name] = x
+            outputs += (x,)
+
+        for ll in self.stage2:
+            x = ll(x)
+        outputs += (x,)
+        for ll in self.stage3:
+            x = ll(x)
+        outputs += (x,)
+        for ll in self.stage4:
+            x = ll(x)
+        outputs += (x,)
+        for ll in self.stage5:
+            x = ll(x)
+        outputs += (x,)
 
         return outputs
+
 
     # def output_shape(self):
     #     return {
@@ -433,10 +452,8 @@ if __name__ == "__main__":
     model = VoVNet(VoVNet19_eSE, input_ch=3, out_features=["stage2", "stage3", "stage4", "stage5"])
     model.set_train(mode=False)
     stdnormal = ops.StandardNormal(seed=2)
-    input = stdnormal((1, 3, 224, 224))
+    input = stdnormal((3, 3, 224, 224))
 
-    # 当模型_OSA_stage(nn.SequentialCell)继承nn.SequentialCell的时候，没有进行前向过程
-    # 本来pytorch继承nn.Sequential类的时候没有forward函数，但是在mindspore中的nn.SequentialCell该如何定义，
-    # 并且如何进行前传播，还是一个问题
     output = model(input)
+    print(ouput[0].shape,output[1].shape)
 
