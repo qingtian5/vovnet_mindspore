@@ -1,7 +1,7 @@
 # Copyright (c) Youngwan Lee (ETRI) All Rights Reserved.
 from collections import OrderedDict
 import mindspore as ms
-from mindspore import nn,ops
+from mindspore import nn, ops
 
 from mindvision.engine.class_factory import ClassFactory, ModuleType
 
@@ -24,7 +24,7 @@ VoVNet19_slim_dw_eSE = {
     "layer_per_block": 3,
     "block_per_stage": [1, 1, 1, 1],
     "eSE": True,
-    "dw" : True
+    "dw": True
 }
 
 VoVNet19_dw_eSE = {
@@ -34,7 +34,7 @@ VoVNet19_dw_eSE = {
     "layer_per_block": 3,
     "block_per_stage": [1, 1, 1, 1],
     "eSE": True,
-    "dw" : True
+    "dw": True
 }
 
 VoVNet19_slim_eSE = {
@@ -43,8 +43,8 @@ VoVNet19_slim_eSE = {
     'stage_out_ch': [112, 256, 384, 512],
     'layer_per_block': 3,
     'block_per_stage': [1, 1, 1, 1],
-    'eSE' : True,
-    "dw" : False
+    'eSE': True,
+    "dw": False
 }
 
 VoVNet19_eSE = {
@@ -54,7 +54,7 @@ VoVNet19_eSE = {
     "layer_per_block": 3,
     "block_per_stage": [1, 1, 1, 1],
     "eSE": True,
-    "dw" : False
+    "dw": False
 }
 
 VoVNet39_eSE = {
@@ -64,7 +64,7 @@ VoVNet39_eSE = {
     "layer_per_block": 5,
     "block_per_stage": [1, 1, 2, 2],
     "eSE": True,
-    "dw" : False
+    "dw": False
 }
 
 VoVNet57_eSE = {
@@ -74,7 +74,7 @@ VoVNet57_eSE = {
     "layer_per_block": 5,
     "block_per_stage": [1, 1, 4, 3],
     "eSE": True,
-    "dw" : False
+    "dw": False
 }
 
 VoVNet99_eSE = {
@@ -84,7 +84,7 @@ VoVNet99_eSE = {
     "layer_per_block": 5,
     "block_per_stage": [1, 3, 9, 3],
     "eSE": True,
-    "dw" : False
+    "dw": False
 }
 
 _STAGE_SPECS = {
@@ -97,32 +97,34 @@ _STAGE_SPECS = {
     "V-99-eSE": VoVNet99_eSE,
 }
 
+
 def dw_conv3x3(in_channels, out_channels, module_name, postfix,
-            stride=1, kernel_size=3, padding=1):
+               stride=1, kernel_size=3, padding=1):
     """3x3 convolution with padding"""
     return [
         ('{}_{}_dw_conv3x3'.format(module_name, postfix),
-            nn.Conv2d(in_channels, out_channels,
-                      kernel_size=kernel_size,
-                      stride=stride,
-                      pad_mode='pad',
-                      padding=padding,
-                      group=out_channels,
-                      has_bias=False)),
+         nn.Conv2d(in_channels, out_channels,
+                   kernel_size=kernel_size,
+                   stride=stride,
+                   pad_mode='pad',
+                   padding=padding,
+                   group=out_channels,
+                   has_bias=False)),
         ('{}_{}_pw_conv1x1'.format(module_name, postfix),
-            nn.Conv2d(in_channels, out_channels,
-                      kernel_size=1,
-                      stride=1,
-                      pad_mode='pad',
-                      padding=0,
-                      group=1,
-                      has_bias=False)),
+         nn.Conv2d(in_channels, out_channels,
+                   kernel_size=1,
+                   stride=1,
+                   pad_mode='pad',
+                   padding=0,
+                   group=1,
+                   has_bias=False)),
         ('{}_{}_pw_norm'.format(module_name, postfix), nn.BatchNorm2d(out_channels)),
         ('{}_{}_pw_relu'.format(module_name, postfix), nn.ReLU()),
     ]
 
+
 def conv3x3(
-    in_channels, out_channels, module_name, postfix, stride=1, groups=1, kernel_size=3, padding=1
+        in_channels, out_channels, module_name, postfix, stride=1, groups=1, kernel_size=3, padding=1
 ):
     """3x3 convolution with padding"""
     return [
@@ -145,7 +147,7 @@ def conv3x3(
 
 
 def conv1x1(
-    in_channels, out_channels, module_name, postfix, stride=1, groups=1, kernel_size=1, padding=0
+        in_channels, out_channels, module_name, postfix, stride=1, groups=1, kernel_size=1, padding=0
 ):
     """1x1 convolution with padding"""
     return [
@@ -176,12 +178,13 @@ class Hsigmoid(nn.Cell):
     def construct(self, x):
         return self.relu6(x + 3.0) / 6.0
 
+
 # nn.AdaptiveAvgPool2D(1) 如何复现,用ops.AdaptiveAvgPool2D(1)替换
 class eSEModule(nn.Cell):
     def __init__(self, channel, reduction=4):
         super(eSEModule, self).__init__()
         self.avg_pool = ops.AdaptiveAvgPool2D(1)
-        self.fc = nn.Conv2d(channel, channel, kernel_size=1, pad_mode='pad', padding=0)
+        self.fc = nn.Conv2d(channel, channel, kernel_size=1, pad_mode='pad', padding=0, has_bias=True)
         self.hsigmoid = Hsigmoid()
 
     def construct(self, x):
@@ -194,7 +197,7 @@ class eSEModule(nn.Cell):
 
 class _OSA_module(nn.Cell):
     def __init__(
-        self, in_ch, stage_ch, concat_ch, layer_per_block, module_name, SE=False, identity=False, depthwise=False
+            self, in_ch, stage_ch, concat_ch, layer_per_block, module_name, SE=False, identity=False, depthwise=False
     ):
 
         super(_OSA_module, self).__init__()
@@ -208,7 +211,7 @@ class _OSA_module(nn.Cell):
             self.isReduced = True
             self.conv_reduction = nn.SequentialCell(
                 OrderedDict(conv1x1(in_channel, stage_ch,
-                  "{}_reduction".format(module_name), "0")))
+                                    "{}_reduction".format(module_name), "0")))
         for i in range(layer_per_block):
             if self.depthwise:
                 self.layers.append(
@@ -253,14 +256,14 @@ class _OSA_module(nn.Cell):
 
 class _OSA_stage(nn.SequentialCell):
     def __init__(
-        self,
-        in_ch,
-        stage_ch,
-        concat_ch,
-        block_per_stage,
-        layer_per_block,
-        stage_num, SE=False,
-        depthwise=False):
+            self,
+            in_ch,
+            stage_ch,
+            concat_ch,
+            block_per_stage,
+            layer_per_block,
+            stage_num, SE=False,
+            depthwise=False):
 
         super(_OSA_stage, self).__init__()
 
@@ -354,7 +357,7 @@ class VoVNet(nn.Cell):
         # self._freeze_backbone(cfg.MODEL.BACKBONE.FREEZE_AT)
 
     def _initialize_weights(self):
-        for _,cell in self.cells_and_names():
+        for _, cell in self.cells_and_names():
             if isinstance(cell, nn.Conv2d):
                 cell.weight.set_data(ms.common.initializer.initializer(
                     ms.common.initializer.HeUniform(),
@@ -403,7 +406,6 @@ class VoVNet(nn.Cell):
 
         return outputs
 
-
     # def output_shape(self):
     #     return {
     #         name: ShapeSpec(
@@ -423,7 +425,6 @@ class VoVNet(nn.Cell):
 #     """
 #     out_features = cfg.MODEL.VOVNET.OUT_FEATURES
 #     return VoVNet(cfg, input_shape.channels, out_features=out_features)
-
 
 
 # @BACKBONE_REGISTRY.register()
@@ -455,5 +456,4 @@ if __name__ == "__main__":
     input = stdnormal((3, 3, 224, 224))
 
     output = model(input)
-    print(ouput[0].shape,output[1].shape)
-
+    print(ouput[0].shape, output[1].shape)
