@@ -247,43 +247,6 @@ class _OSA_module(nn.Cell):
         return xt
 
 
-class _OSA_stage(nn.SequentialCell):
-    def __init__(
-            self,
-            in_ch,
-            stage_ch,
-            concat_ch,
-            block_per_stage,
-            layer_per_block,
-            stage_num, SE=False,
-            depthwise=False):
-
-        super(_OSA_stage, self).__init__()
-
-        # nn.MaxPool2d(kernel_size=3, stride=2, ceil_mode=True)
-        # 用 nn.MaxPool2d(kernel_size=3, stride=2, pad_mode='same') 代替
-
-        if not stage_num == 2:
-            self.insert_child_to_cell("Pooling", nn.MaxPool2d(kernel_size=3, stride=2, pad_mode='same'))
-
-        if block_per_stage != 1:
-            SE = False
-        module_name = f"OSA{stage_num}_1"
-        self.insert_child_to_cell(
-            module_name, _OSA_module(in_ch, stage_ch, concat_ch, layer_per_block, module_name, SE, depthwise=depthwise)
-        )
-        for i in range(block_per_stage - 1):
-            if i != block_per_stage - 2:  # last block
-                SE = False
-            module_name = f"OSA{stage_num}_{i + 2}"
-            self.insert_child_to_cell(
-                module_name,
-                _OSA_module(
-                    concat_ch, stage_ch, concat_ch, layer_per_block, module_name, SE, identity=True, depthwise=depthwise
-                ),
-            )
-
-
 class VoVNet(nn.Cell):
     def __init__(self, cfg, input_ch, out_features=None, freeze_bn=False):
         """
@@ -340,6 +303,9 @@ class VoVNet(nn.Cell):
         # 如果需要取冻结BN层的参数
         if self.freeze_bn:
             self._freeze_bn()
+
+        # nn.MaxPool2d(kernel_size=3, stride=2, ceil_mode=True)
+        # 用 nn.MaxPool2d(kernel_size=3, stride=2, pad_mode='same') 代替
 
     def _make_layer(self,
                     in_ch, stage_ch,
