@@ -1,17 +1,10 @@
-# Copyright (c) Youngwan Lee (ETRI) All Rights Reserved.
 from collections import OrderedDict
 import mindspore as ms
 from mindspore import nn, ops
 
 from mindvision.engine.class_factory import ClassFactory, ModuleType
 
-ms.set_context(mode=ms.PYNATIVE_MODE)
-
-# 如何复现detection2的算子！！
-# from detectron2.layers import FrozenBatchNorm2d, ShapeSpec, get_norm
-# from detectron2.modeling.backbone import Backbone
-# from detectron2.modeling.backbone.build import BACKBONE_REGISTRY
-# from detectron2.modeling.backbone.fpn import FPN, LastLevelMaxPool
+ms.set_context(mode=ms.GRAPH_MODE)
 
 __all__ = ["VoVNet"]
 
@@ -292,7 +285,7 @@ class _OSA_stage(nn.SequentialCell):
 
 
 class VoVNet(nn.Cell):
-    def __init__(self, cfg, input_ch, out_features=None):
+    def __init__(self, cfg, input_ch, out_features=None, freeze_bn=False):
         """
         Args:
             input_ch(int) : the number of input channel
@@ -328,33 +321,56 @@ class VoVNet(nn.Cell):
 
         stem_out_ch = [stem_ch[2]]
         in_ch_list = stem_out_ch + config_concat_ch[:-1]
-        # OSA stages
-        self.stage_names = []
-        for i in range(4):  # num_stages
-            name = "stage%d" % (i + 2)  # stage 2 ... stage 5
-            self.stage_names.append(name)
-            self.insert_child_to_cell(
-                name,
-                _OSA_stage(
-                    in_ch_list[i],
-                    config_stage_ch[i],
-                    config_concat_ch[i],
-                    block_per_stage[i],
-                    layer_per_block,
-                    i + 2,
-                    SE,
-                    depthwise,
-                ),
-            )
 
-            self._out_feature_channels[name] = config_concat_ch[i]
-            if not i == 0:
-                self._out_feature_strides[name] = current_stirde = int(current_stirde * 2)
+        self.stage2 = self._make_layer(in_ch_list[0], config_stage_ch[0], config_concat_ch[0],
+                                       block_per_stage[0], layer_per_block, 2, SE, depthwise)
+        self.stage3 = self._make_layer(in_ch_list[1], config_stage_ch[1], config_concat_ch[1],
+                                       block_per_stage[1], layer_per_block, 3, SE, depthwise)
+        self.stage4 = self._make_layer(in_ch_list[2], config_stage_ch[2], config_concat_ch[2],
+                                       block_per_stage[2], layer_per_block, 4, SE, depthwise)
+        self.stage5 = self._make_layer(in_ch_list[3], config_stage_ch[3], config_concat_ch[3],
+                                       block_per_stage[3], layer_per_block, 5, SE, depthwise)
 
         # initialize weights
         self._initialize_weights()
         # Optionally freeze (requires_grad=False) parts of the backbone
         # self._freeze_backbone(cfg.MODEL.BACKBONE.FREEZE_AT)
+
+        self.freeze_bn = freeze_bn
+        # 如果需要取冻结BN层的参数
+        if self.freeze_bn:
+            self._freeze_bn()
+
+    def _make_layer(self,
+                    in_ch, stage_ch,
+                    concat_ch,
+                    block_per_stage,
+                    layer_per_block,
+                    stage_num,
+                    SE=False,
+                    depthwise=False):
+        layers = []
+        if not stage_num == 2:
+            layers.append(nn.MaxPool2d(kernel_size=3, stride=2, pad_mode='same'))
+        if block_per_stage != 1:
+            SE = False
+        module_name = f"OSA{stage_num}_1"
+        layers.append(_OSA_module(in_ch, stage_ch, concat_ch, layer_per_block, module_name, SE, depthwise=depthwise))
+        for i in range(block_per_stage - 1):
+            if i != block_per_stage - 2:  # last block
+                SE = False
+            module_name = f"OSA{stage_num}_{i + 2}"
+            layers.append(
+                _OSA_module(
+                    concat_ch, stage_ch, concat_ch, layer_per_block, module_name, SE, identity=True, depthwise=depthwise
+                )
+            )
+        return nn.SequentialCell(layers)
+
+    def _freeze_bn(self):
+        for param in self.get_parameters():
+            if 'norm' in param.name:
+                param.requires_grad = False
 
     def _initialize_weights(self):
         for _, cell in self.cells_and_names():
@@ -364,90 +380,35 @@ class VoVNet(nn.Cell):
                     cell.weight.shape, cell.weight.dtype
                 ))
 
-    # def _freeze_backbone(self, freeze_at):
-    #     if freeze_at < 0:
-    #         return
-    #
-    #     for stage_index in range(freeze_at):
-    #         if stage_index == 0:
-    #             m = self.stem  # stage 0 is the stem
-    #         else:
-    #             m = getattr(self, "stage" + str(stage_index + 1))
-    #         for p in m.get_parameters():
-    #             p.requires_grad = False
-    #             FrozenBatchNorm2d.convert_frozen_batchnorm(self)
+    #     def _freeze_backbone(self, freeze_at):
+    #         if freeze_at < 0:
+    #             return
+
+    #         for stage_index in range(freeze_at):
+    #             if stage_index == 0:
+    #                 m = self.stem  # stage 0 is the stem
+    #             else:
+    #                 m = getattr(self, "stage" + str(stage_index + 1))
+    #             for p in m.get_parameters():
+    #                 p.requires_grad = False
+    #                 FrozenBatchNorm2d.convert_frozen_batchnorm(self)
 
     def construct(self, x):
         outputs = ()
         x = self.stem(x)
 
-        # if "stem" in self._out_features:
-        #     outputs["stem"] = x
+        x = self.stage2(x)
+        x = self.stage3(x)
+        x = self.stage4(x)
+        x = self.stage5(x)
+
         # for name in self.stage_names:
         #     x = getattr(self, name)(x)
         #     if name in self._out_features:
         #         outputs[name] = x
 
-        if "stem" in self._out_features:
-            outputs += (x,)
+        return x
 
-        for ll in self.stage2:
-            x = ll(x)
-        outputs += (x,)
-        for ll in self.stage3:
-            x = ll(x)
-        outputs += (x,)
-        for ll in self.stage4:
-            x = ll(x)
-        outputs += (x,)
-        for ll in self.stage5:
-            x = ll(x)
-        outputs += (x,)
-
-        return outputs
-
-    # def output_shape(self):
-    #     return {
-    #         name: ShapeSpec(
-    #             channels=self._out_feature_channels[name], stride=self._out_feature_strides[name]
-    #         )
-    #         for name in self._out_features
-    #     }
-
-
-# @ClassFactory.register(ModuleType.BACKBONE)
-# def build_vovnet_backbone(cfg, input_shape):
-#     """
-#     Create a VoVNet instance from config.
-#
-#     Returns:
-#         VoVNet: a :class:`VoVNet` instance.
-#     """
-#     out_features = cfg.MODEL.VOVNET.OUT_FEATURES
-#     return VoVNet(cfg, input_shape.channels, out_features=out_features)
-
-
-# @BACKBONE_REGISTRY.register()
-# def build_vovnet_fpn_backbone(cfg, input_shape: ShapeSpec):
-#     """
-#     Args:
-#         cfg: a detectron2 CfgNode
-
-#     Returns:
-#         backbone (Backbone): backbone module, must be a subclass of :class:`Backbone`.
-#     """
-#     bottom_up = build_vovnet_backbone(cfg, input_shape)
-#     in_features = cfg.MODEL.FPN.IN_FEATURES
-#     out_channels = cfg.MODEL.FPN.OUT_CHANNELS
-#     backbone = FPN(
-#         bottom_up=bottom_up,
-#         in_features=in_features,
-#         out_channels=out_channels,
-#         norm=cfg.MODEL.FPN.NORM,
-#         top_block=LastLevelMaxPool(),
-#         fuse_type=cfg.MODEL.FPN.FUSE_TYPE,
-#     )
-#     return backbone
 
 if __name__ == "__main__":
     model = VoVNet(VoVNet19_eSE, input_ch=3, out_features=["stage2", "stage3", "stage4", "stage5"])
@@ -456,4 +417,5 @@ if __name__ == "__main__":
     input = stdnormal((3, 3, 224, 224))
 
     output = model(input)
-    print(ouput[0].shape, output[1].shape)
+    print(output.shape)
+
