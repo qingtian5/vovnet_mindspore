@@ -10,6 +10,7 @@ __all__ = ["VoVNet"]
 
 #  如果为True，则使用当前批处理数据的平均值和方差值，并跟踪运行平均值和运行方差。
 # - 如果为False，则使用指定值的平均值和方差值，不跟踪统计值。
+# - 如果为None，则根据训练和验证模式自动设置 use_batch_statistics 为True或False。
 _NORM = None
 
 def dw_conv3x3(in_channels, out_channels, module_name, postfix,
