@@ -128,7 +128,7 @@ class _OSA_module(nn.Cell):
             concat_ch,
             layer_per_block,
             module_name,
-            SE=False, 
+            SE=False,
             identity=False,
             depthwise=False
     ):
@@ -162,7 +162,6 @@ class _OSA_module(nn.Cell):
         )
 
         self.ese = eSEModule(concat_ch)
-        # self.ese = nn.SequentialCell(OrderedDict([(f'{module_name}',eSEModule(concat_ch))]))
 
     def construct(self, x):
 
