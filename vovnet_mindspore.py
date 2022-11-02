@@ -10,18 +10,7 @@ __all__ = ["VoVNet"]
 
 #  如果为True，则使用当前批处理数据的平均值和方差值，并跟踪运行平均值和运行方差。
 # - 如果为False，则使用指定值的平均值和方差值，不跟踪统计值。
-_NORM = True
-
-_STAGE_SPECS = {
-    "V-19-slim-dw-eSE": VoVNet19_slim_dw_eSE,
-    "V-19-dw-eSE": VoVNet19_dw_eSE,
-    "V-19-slim-eSE": VoVNet19_slim_eSE,
-    "V-19-eSE": VoVNet19_eSE,
-    "V-39-eSE": VoVNet39_eSE,
-    "V-57-eSE": VoVNet57_eSE,
-    "V-99-eSE": VoVNet99_eSE,
-}
-
+_NORM = None
 
 def dw_conv3x3(in_channels, out_channels, module_name, postfix,
                stride=1, kernel_size=3, padding=1):
@@ -203,7 +192,7 @@ class VoVNet(nn.Cell):
                  input_ch,
                  out_features=['stage2', 'stage3', 'stage4', 'stage5'],
                  freeze_at=0,
-                 norm_bn=None):
+                 norm_bn=False):
 
         super(VoVNet, self).__init__()
 
