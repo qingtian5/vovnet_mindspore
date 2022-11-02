@@ -307,5 +307,7 @@ class VoVNet(nn.Cell):
         x = self.stage5(x)
         if 'stage5' in self._out_features:
             outputs += (x,)
+        if len(self._out_features)==1:
+            outputs = x
 
         return outputs
