@@ -122,7 +122,15 @@ class eSEModule(nn.Cell):
 
 class _OSA_module(nn.Cell):
     def __init__(
-            self, in_ch, stage_ch, concat_ch, layer_per_block, module_name, SE=False, identity=False, depthwise=False
+            self,
+            in_ch,
+            stage_ch,
+            concat_ch,
+            layer_per_block,
+            module_name,
+            SE=False, 
+            identity=False,
+            depthwise=False
     ):
 
         super(_OSA_module, self).__init__()
